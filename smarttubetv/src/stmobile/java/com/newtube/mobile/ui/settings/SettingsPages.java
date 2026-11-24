@@ -116,6 +116,11 @@ public final class SettingsPages {
                         : context.getString(R.string.mobile_settings_account_signed_out),
                 page -> AccountsSheet.show(page.requireActivity(), page::rebuild)));
 
+        rows.add(SettingsRow.action(R.drawable.ic_mobile_cast, context.getString(R.string.mobile_cast_button),
+                () -> context.getString(R.string.mobile_cast_settings_summary),
+                page -> com.newtube.mobile.casting.CastPickerLauncher.open(page.requireActivity(),
+                        com.newtube.mobile.casting.CastPickerLauncher::presentPlain)));
+
         rows.add(SettingsRow.header(context.getString(R.string.mobile_settings_group_app)));
         rows.add(SettingsRow.page(R.drawable.ic_settings_general, context.getString(R.string.mobile_settings_general),
                 context.getString(R.string.mobile_settings_general_summary), GENERAL)

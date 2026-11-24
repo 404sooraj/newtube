@@ -17,4 +17,7 @@
     <attr name="newtubeColorSurface" format="color" />
     <attr name="newtubeColorCard" format="color" />
     <attr name="newtubeColorCommentParent" format="color" />
+    <declare-styleable name="GradientBlurView">
+        <attr name="blurFromTop" format="boolean" />
+    </declare-styleable>
 </resources>

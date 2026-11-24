@@ -283,6 +283,7 @@
          words - no protocol names; one row per physical device; the tradeoff explanations live in
          the mode-chooser subtitles, shown exactly when the choice exists. -->
     <string name="mobile_cast_button">Cast to TV</string>
+    <string name="mobile_cast_settings_summary">Play on a TV or speaker nearby</string>
     <string name="mobile_cast_picker_title">Cast to</string>
     <string name="mobile_cast_searching">Looking for devices…</string>
     <string name="mobile_cast_empty">No devices found on this Wi-Fi network</string>

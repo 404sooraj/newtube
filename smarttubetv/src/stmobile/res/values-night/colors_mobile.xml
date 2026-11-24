@@ -35,4 +35,7 @@
     <color name="dialog_text_color">#a1a1a6</color>
     <color name="dialog_hint_color">#33FFFFFF</color>
     <color name="dialog_proxy_hint_color">#80FFFFFF</color>
+    <color name="mobile_nav_pill">#8C1E1E1E</color>
+    <color name="mobile_nav_bubble">#26FFFFFF</color>
+    <color name="mobile_nav_edge">#2EFFFFFF</color>
 </resources>

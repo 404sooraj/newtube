@@ -15,64 +15,6 @@
     the system windows (solid app-colored status/nav bars), so this layout never renders
     under the bars regardless of what the player did to the display in between. -->
 
-    <!-- NEWTUBE(you-subscreen): back arrow shown (with the section's name in the title bar) only
-         while a section opened from a You row is on screen - BrowseTopBar. GONE otherwise, and a
-         GONE view collapses to a point at the start, so the wordmark keeps its 16dp inset. -->
-    <ImageButton
-        android:id="@+id/mobile_title_back"
-        android:layout_width="48dp"
-        android:layout_height="@dimen/mobile_title_bar_height"
-        android:layout_marginStart="4dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/mobile_dialog_back"
-        android:padding="12dp"
-        android:src="@drawable/ic_mobile_back_arrow"
-        android:visibility="gone"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <TextView
-        android:id="@+id/mobile_title_bar"
-        android:layout_width="0dp"
-        android:layout_height="@dimen/mobile_title_bar_height"
-        android:background="?attr/newtubeColorBackground"
-        android:ellipsize="end"
-        android:gravity="center_vertical|start"
-        android:maxLines="1"
-        android:paddingStart="16dp"
-        android:text="@string/app_name"
-        android:textColor="@color/mobile_color_on_surface"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        app:layout_constraintEnd_toStartOf="@id/mobile_cast_button"
-        app:layout_constraintStart_toEndOf="@id/mobile_title_back"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <!-- Cast picker entry on the home feed, like the official app's top bar. Tinted with the
-         accent while a session is connected (MobileBrowseActivity.updateCastIconTint). -->
-    <ImageButton
-        android:id="@+id/mobile_cast_button"
-        android:layout_width="48dp"
-        android:layout_height="@dimen/mobile_title_bar_height"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/mobile_cast_button"
-        android:padding="12dp"
-        android:src="@drawable/ic_mobile_cast"
-        app:layout_constraintEnd_toStartOf="@id/mobile_search_button"
-        app:layout_constraintTop_toTopOf="@id/mobile_title_bar" />
-
-    <ImageButton
-        android:id="@+id/mobile_search_button"
-        android:layout_width="48dp"
-        android:layout_height="@dimen/mobile_title_bar_height"
-        android:layout_marginEnd="4dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/mobile_search_button"
-        android:padding="12dp"
-        android:src="@drawable/ic_mobile_search"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="@id/mobile_title_bar" />
-
     <!-- Pull-to-refresh drives BrowsePresenter.refresh() - also the natural retry
          gesture when a section shows the error placeholder (the error overlay doesn't
          consume touches, so the pull still reaches this layout). -->
@@ -80,10 +22,10 @@
         android:id="@+id/mobile_content_swipe"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/mobile_bottom_nav"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/mobile_title_bar">
+        app:layout_constraintTop_toTopOf="parent">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/mobile_content_grid"
@@ -163,11 +105,12 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:background="?attr/newtubeColorBackground"
+        android:clipToPadding="false"
         android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/mobile_bottom_nav"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/mobile_title_bar"
+        app:layout_constraintTop_toTopOf="parent"
         tools:visibility="visible">
 
         <LinearLayout
@@ -253,6 +196,59 @@
         </LinearLayout>
 
     </ScrollView>
+
+    <!-- Gradient (progressive) blur under the status bar / top controls and under the tab pill:
+         the feed is fully blurred at the screen edge and eases out to sharp. Heights are set in
+         MobileBrowseActivity (insets + pill footprint). -->
+    <com.newtube.mobile.ui.common.GradientBlurView
+        android:id="@+id/mobile_blur_top"
+        android:layout_width="0dp"
+        android:layout_height="96dp"
+        app:blurFromTop="true"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <com.newtube.mobile.ui.common.GradientBlurView
+        android:id="@+id/mobile_blur_bottom"
+        android:layout_width="0dp"
+        android:layout_height="120dp"
+        app:blurFromTop="false"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- NEWTUBE(you-subscreen): back arrow (and the section name) only while a section opened from
+         a You row is on screen. No wordmark, no buttons: search is a tab in the pill below and cast
+         lives in Settings, so on a tab the top is free (the title bar collapses to height 0). -->
+    <ImageButton
+        android:id="@+id/mobile_title_back"
+        android:layout_width="48dp"
+        android:layout_height="@dimen/mobile_title_bar_height"
+        android:layout_marginStart="4dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/mobile_dialog_back"
+        android:padding="12dp"
+        android:src="@drawable/ic_mobile_back_arrow"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@id/mobile_title_bar" />
+
+    <!-- Transparent: it only holds the sub-screen title and the height the content hangs from. -->
+    <TextView
+        android:id="@+id/mobile_title_bar"
+        android:layout_width="0dp"
+        android:layout_height="@dimen/mobile_title_bar_height"
+        android:ellipsize="end"
+        android:gravity="center_vertical|start"
+        android:maxLines="1"
+        android:paddingStart="16dp"
+        android:textColor="@color/mobile_color_on_surface"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/mobile_title_back"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <!-- YouTube-style FLOATING mini-player: just the live video (no bar), a rounded card
          hovering over the grid's bottom-right corner above the bottom nav. GONE by default;
@@ -340,22 +336,28 @@
 
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- Matched against the real YouTube app on a Pixel 9 (2026-07): their icon/label row
-         measures ~51dp with 24dp icons and ~10sp labels, content centered, gesture inset
-         absorbed below. Stock M2 wrap_content (56dp row) is the closest the widget allows;
-         the view pads itself by the gesture-navigation inset (paddingBottomSystemWindowInsets)
-         so the bar paints through to the display edge without squeezing the row. -->
-    <com.google.android.material.bottomnavigation.BottomNavigationView
+    <!-- Momentum-style floating tab bar: a rounded glass-like pill inset from the edges and
+         hovering over the feed (the grid scrolls under it; see MobileBrowseActivity#setupFloatingNav).
+         The bubble behind the selected tab and the drag-between-tabs gesture live in
+         FloatingBottomNavigationView. The gesture-nav inset is applied as bottom margin in code, so
+         the pill clears the system bar instead of padding through it. -->
+    <com.newtube.mobile.ui.common.FloatingBottomNavigationView
         android:id="@+id/mobile_bottom_nav"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="?attr/newtubeColorBackground"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="10dp"
+        android:elevation="6dp"
         app:itemIconSize="24dp"
+        app:paddingBottomSystemWindowInsets="false"
+        app:paddingLeftSystemWindowInsets="false"
+        app:paddingRightSystemWindowInsets="false"
+        app:paddingTopSystemWindowInsets="false"
         app:itemIconTint="@color/mobile_bottom_nav_item"
         app:itemTextAppearanceActive="@style/MobileBottomNavText"
         app:itemTextAppearanceActiveBoldEnabled="false"
         app:itemTextAppearanceInactive="@style/MobileBottomNavText"
-        app:paddingBottomSystemWindowInsets="true"
         app:itemTextColor="@color/mobile_bottom_nav_item"
         app:labelVisibilityMode="labeled"
         app:layout_constraintBottom_toBottomOf="parent"

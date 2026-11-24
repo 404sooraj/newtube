@@ -79,4 +79,7 @@
     <color name="mobile_player_on_video">#FFFFFF</color>
     <color name="mobile_player_pill">#26FFFFFF</color>
     <color name="mobile_player_cast_active">#4FC3F7</color>
+    <color name="mobile_nav_pill">#99FFFFFF</color>
+    <color name="mobile_nav_bubble">#14000000</color>
+    <color name="mobile_nav_edge">#66FFFFFF</color>
 </resources>

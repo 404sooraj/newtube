@@ -21,11 +21,13 @@ final class BrowseTopBar {
     private final View mBack;
     private final int mWordmarkInset;
     private final int mBesideBackInset;
+    private final int mBarHeight;
 
     BrowseTopBar(Activity activity, Runnable onBack) {
         mTitle = activity.findViewById(R.id.mobile_title_bar);
         mBack = activity.findViewById(R.id.mobile_title_back);
         mBack.setOnClickListener(v -> onBack.run());
+        mBarHeight = activity.getResources().getDimensionPixelSize(R.dimen.mobile_title_bar_height);
         mWordmarkInset = mTitle.getPaddingStart();
         mBesideBackInset = activity.getResources()
                 .getDimensionPixelSize(R.dimen.mobile_dialog_title_inset_with_back);
@@ -37,8 +39,14 @@ final class BrowseTopBar {
      */
     void show(boolean subScreen, CharSequence title) {
         mBack.setVisibility(subScreen ? View.VISIBLE : View.GONE);
-        mTitle.setText(subScreen && title != null && title.length() > 0
-                ? title : mTitle.getContext().getString(R.string.app_name));
+        // On a tab the top is free: the bar collapses to nothing (the status inset stays).
+        android.view.ViewGroup.LayoutParams lp = mTitle.getLayoutParams();
+        int height = subScreen ? mBarHeight : 0;
+        if (lp.height != height) {
+            lp.height = height;
+            mTitle.setLayoutParams(lp);
+        }
+        mTitle.setText(subScreen && title != null && title.length() > 0 ? title : "");
         mTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, subScreen ? SUBSCREEN_TITLE_SP : WORDMARK_SP);
         mTitle.setPaddingRelative(subScreen ? mBesideBackInset : mWordmarkInset,
                 mTitle.getPaddingTop(), mTitle.getPaddingEnd(), mTitle.getPaddingBottom());

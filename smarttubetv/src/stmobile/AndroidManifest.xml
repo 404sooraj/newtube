@@ -86,6 +86,7 @@
          player re-colours its watch page in place so the video never stops. -->
     <application
         android:name="com.newtube.mobile.MobileMainApplication"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.NewTube"
         tools:replace="android:name,android:theme">
 

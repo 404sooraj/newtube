@@ -17,6 +17,11 @@ import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
+import androidx.activity.BackEventCompat;
+import androidx.activity.OnBackPressedCallback;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -119,6 +124,8 @@ public class MobileBrowseActivity extends MobileActivity
      * {@link #ITEM_ID_OFFSET} + any real section id, so it can never collide with one.
      */
     private static final int YOU_ITEM_ID = 2_000_000;
+    /** The Search entry in the tab pill: opens search instead of selecting a tab. */
+    private static final int SEARCH_ITEM_ID = 2_000_001;
     private static final int REQUEST_POST_NOTIFICATIONS = 1;
     /** Intent action (download notifications) that lands on the Downloads tab. */
     public static final String ACTION_OPEN_DOWNLOADS = "com.newtube.mobile.OPEN_DOWNLOADS";
@@ -132,14 +139,11 @@ public class MobileBrowseActivity extends MobileActivity
     private static final int[] PREFERRED_SECTION_IDS = {
             MediaGroup.TYPE_HOME,
             MediaGroup.TYPE_SUBSCRIPTIONS,
-            MediaGroup.TYPE_HISTORY,
-            VideoDownloads.SECTION_ID,
+            // History and Downloads live in the You tab (Momentum-style 3-tab bar).
     };
     private static final int[] PREFERRED_SECTION_TITLE_RES = {
             R.string.header_home,
             R.string.header_subscriptions,
-            R.string.header_history,
-            R.string.header_downloads,
     };
 
     private BrowsePresenter mPresenter;
@@ -239,9 +243,35 @@ public class MobileBrowseActivity extends MobileActivity
     private boolean mFeedSwapPinTop;
     private final Runnable mRestoreItemAnimator = this::restoreItemAnimator;
 
+    /**
+     * Immersive shell: the standard phone chrome (solid, app-coloured bars, decor fitting the system
+     * windows) is replaced by transparent bars with the content drawn behind them - the gradient blur
+     * and the glass pills sit over the feed all the way to the screen edges. Icon contrast is kept
+     * from the base call.
+     */
+    @Override
+    protected void applyMobileSystemBars() {
+        super.applyMobileSystemBars();
+        android.view.Window window = getWindow();
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false);
+        window.setStatusBarColor(android.graphics.Color.TRANSPARENT);
+        window.setNavigationBarColor(android.graphics.Color.TRANSPARENT);
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            window.setNavigationBarContrastEnforced(false);
+            window.setStatusBarContrastEnforced(false);
+        }
+        ViewCompat.requestApplyInsets(window.getDecorView());
+    }
+
+    @Override
+    protected boolean shouldInsetContentForSystemBars() {
+        // Edge to edge: setupFloatingNav turns the insets into margins under the glass.
+        return false;
+    }
+
     @Override
     protected boolean shouldInsetContentForNavigationBar() {
-        // BottomNavigationView paints through the gesture area and applies that inset internally.
+        // The floating tab pill takes the nav-bar inset as its own bottom margin (setupFloatingNav).
         return false;
     }
 
@@ -256,7 +286,7 @@ public class MobileBrowseActivity extends MobileActivity
 
         setContentView(R.layout.activity_mobile_browse);
 
-        registerBackHandler(this::handleBack);
+        registerPredictiveBack();
 
         bindViews();
         setupContentGrid();
@@ -310,9 +340,8 @@ public class MobileBrowseActivity extends MobileActivity
         mErrorIcon = findViewById(R.id.mobile_error_icon);
         mErrorMessage = findViewById(R.id.mobile_error_message);
         mErrorAction = findViewById(R.id.mobile_error_action);
-        mSearchButton = findViewById(R.id.mobile_search_button);
-        mCastButton = findViewById(R.id.mobile_cast_button);
         mTopBar = new BrowseTopBar(this, () -> getOnBackPressedDispatcher().onBackPressed());
+        setupFloatingNav();
 
         mMiniPlayerBar = findViewById(R.id.mobile_mini_player);
         mMiniPlayerFrame = findViewById(R.id.mobile_mini_player_frame);
@@ -832,7 +861,6 @@ public class MobileBrowseActivity extends MobileActivity
      * touch Search view. Passing {@code null} opens an empty search field (no pre-filled query).
      */
     private void setupSearchButton() {
-        mSearchButton.setOnClickListener(v -> SearchPresenter.instance(this).startSearch(null));
     }
 
     // ---------------------------------------------------------------------------------
@@ -847,7 +875,6 @@ public class MobileBrowseActivity extends MobileActivity
     private void setupCastButton() {
         // CastPickerLauncher owns the Android 16+ ACCESS_LOCAL_NETWORK gate (shared with the
         // player); Browse has no immersive window, so the plain presenter is enough.
-        mCastButton.setOnClickListener(v -> CastPickerLauncher.open(this, CastPickerLauncher::presentPlain));
 
         mCastSessionManager = CastSessionManager.instance(this);
         mCastSessionManager.addListener(mCastListener);
@@ -931,6 +958,197 @@ public class MobileBrowseActivity extends MobileActivity
         startActivity(com.newtube.mobile.ui.settings.MobileSettingsActivity.intent(this, null));
     }
 
+    /** Everything that paints glass from the feed: tab pill, top pill, and the two gradient-blur strips. */
+    private final List<com.newtube.mobile.ui.common.GlassSurface> mGlassSurfaces = new ArrayList<>();
+    private int mTopInset;
+
+    /**
+     * Momentum-style shell. The content runs edge to edge: the feed (and the You list) scroll under
+     * a gradient blur at the top, a liquid-glass pill with cast + search, and the floating liquid-glass
+     * tab pill with its own gradient blur below. System-bar insets become margins/heights here rather
+     * than padding on the window, and the lists get padding for what floats over them.
+     */
+    private void setupFloatingNav() {
+        final int baseNavMargin = ((ViewGroup.MarginLayoutParams) mBottomNav.getLayoutParams()).bottomMargin;
+        final int gridPadBottom = mContentGrid.getPaddingBottom();
+        final float dp = getResources().getDisplayMetrics().density;
+        final View title = findViewById(R.id.mobile_title_bar);
+        final View blurTop = findViewById(R.id.mobile_blur_top);
+        final View blurBottom = findViewById(R.id.mobile_blur_bottom);
+        final Runnable fit = () -> {
+            ViewGroup.MarginLayoutParams navLp = (ViewGroup.MarginLayoutParams) mBottomNav.getLayoutParams();
+            int footprint = mBottomNav.getHeight() + navLp.bottomMargin;
+            int topBar = mTopInset + title.getHeight();
+            if (footprint <= 0) {
+                return;
+            }
+            topBar += (int) (8 * dp);
+            mContentGrid.setPadding(mContentGrid.getPaddingLeft(), topBar,
+                    mContentGrid.getPaddingRight(), gridPadBottom + footprint);
+            mYouPanel.setPadding(0, topBar, 0, footprint);
+            setHeight(blurTop, topBar + (int) (28 * dp));
+            setHeight(blurBottom, footprint + (int) (36 * dp));
+        };
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.mobile_browse_root), (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars()
+                    | WindowInsetsCompat.Type.displayCutout());
+            mTopInset = bars.top;
+            ViewGroup.MarginLayoutParams t = (ViewGroup.MarginLayoutParams) title.getLayoutParams();
+            if (t.topMargin != bars.top) {
+                t.topMargin = bars.top;
+                title.setLayoutParams(t);
+            }
+            ViewGroup.MarginLayoutParams n = (ViewGroup.MarginLayoutParams) mBottomNav.getLayoutParams();
+            if (n.bottomMargin != baseNavMargin + bars.bottom) {
+                n.bottomMargin = baseNavMargin + bars.bottom;
+                mBottomNav.setLayoutParams(n);
+            }
+            v.post(fit);
+            return insets;
+        });
+        mBottomNav.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fit.run());
+        title.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fit.run());
+
+        for (int id : new int[] {R.id.mobile_bottom_nav,
+                R.id.mobile_blur_top, R.id.mobile_blur_bottom}) {
+            View surface = findViewById(id);
+            if (surface instanceof com.newtube.mobile.ui.common.GlassSurface) {
+                mGlassSurfaces.add((com.newtube.mobile.ui.common.GlassSurface) surface);
+            }
+        }
+        setGlassSource(mContentSwipe);
+        // The glass repaints with the feed under it.
+        mContentGrid.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(@androidx.annotation.NonNull RecyclerView rv, int dx, int dy) {
+                invalidateGlass();
+            }
+        });
+        mContentGrid.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+            @Override
+            public void onChildViewAttachedToWindow(@androidx.annotation.NonNull View view) {
+                invalidateGlass();
+            }
+
+            @Override
+            public void onChildViewDetachedFromWindow(@androidx.annotation.NonNull View view) {
+                invalidateGlass();
+            }
+        });
+        mYouPanel.getViewTreeObserver().addOnScrollChangedListener(this::invalidateGlass);
+    }
+
+    private static void setHeight(View view, int height) {
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp.height != height) {
+            lp.height = height;
+            view.setLayoutParams(lp);
+        }
+    }
+
+    private void invalidateGlass() {
+        for (int i = 0; i < mGlassSurfaces.size(); i++) {
+            ((View) mGlassSurfaces.get(i)).invalidate();
+        }
+    }
+
+    /** The glass blurs whichever surface is actually under it (feed, or the You panel). */
+    private void setGlassSource(View source) {
+        for (int i = 0; i < mGlassSurfaces.size(); i++) {
+            mGlassSurfaces.get(i).setBackdropSource(source);
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Screen-change motion + predictive back (Momentum-style)
+    // ---------------------------------------------------------------------------------
+
+    /** +1: the incoming surface slides in from the right (deeper / next tab); -1: from the left. */
+    private int mTransitionDir = 1;
+    private int mTabIndex;
+
+    private int navIndexOf(int itemId) {
+        Menu menu = mBottomNav.getMenu();
+        for (int i = 0; i < menu.size(); i++) {
+            if (menu.getItem(i).getItemId() == itemId) {
+                return i;
+            }
+        }
+        return mTabIndex;
+    }
+
+    /** A short slide + fade for the surface that just became the current one. */
+    private void animateEnter(View v) {
+        float dp = getResources().getDisplayMetrics().density;
+        int dir = mTransitionDir;
+        mTransitionDir = 1;
+        v.animate().cancel();
+        v.setTranslationX(28f * dp * dir);
+        v.setAlpha(0f);
+        v.animate().translationX(0f).alpha(1f).setDuration(300)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f))
+                .setUpdateListener(a -> invalidateGlass())
+                .start();
+    }
+
+    private View currentSurface() {
+        return mYouShowing ? mYouPanel : mContentSwipe;
+    }
+
+    private void resetSurface(View v, boolean animated) {
+        v.animate().cancel();
+        if (animated) {
+            v.animate().scaleX(1f).scaleY(1f).translationX(0f).alpha(1f).setDuration(200)
+                    .setUpdateListener(a -> invalidateGlass()).start();
+        } else {
+            v.setScaleX(1f);
+            v.setScaleY(1f);
+            v.setTranslationX(0f);
+            v.setAlpha(1f);
+        }
+    }
+
+    /**
+     * System back gesture with live progress (Android 14+ draws the preview from these callbacks):
+     * the current surface shrinks and drifts with the finger; releasing commits through
+     * {@link #handleBack()}, cancelling springs it back.
+     */
+    private void registerPredictiveBack() {
+        final float dp = getResources().getDisplayMetrics().density;
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackStarted(@androidx.annotation.NonNull BackEventCompat event) {
+                currentSurface().animate().cancel();
+            }
+
+            @Override
+            public void handleOnBackProgressed(@androidx.annotation.NonNull BackEventCompat event) {
+                View v = currentSurface();
+                float p = event.getProgress();
+                float sign = event.getSwipeEdge() == BackEventCompat.EDGE_LEFT ? 1f : -1f;
+                v.setScaleX(1f - 0.07f * p);
+                v.setScaleY(1f - 0.07f * p);
+                v.setTranslationX(sign * 22f * dp * p);
+                v.setAlpha(1f - 0.3f * p);
+                invalidateGlass();
+            }
+
+            @Override
+            public void handleOnBackCancelled() {
+                resetSurface(currentSurface(), true);
+            }
+
+            @Override
+            public void handleOnBackPressed() {
+                resetSurface(mContentSwipe, false);
+                resetSurface(mYouPanel, false);
+                mTransitionDir = -1;
+                handleBack();
+                mTransitionDir = 1;
+            }
+        });
+    }
+
     private void setupBottomNav() {
         mBottomNav.setOnItemSelectedListener(item -> {
             if (!mSuppressNavCallback) {
@@ -954,6 +1172,22 @@ public class MobileBrowseActivity extends MobileActivity
     }
 
     private void onNavItemChosen(int itemId) {
+        if (itemId == SEARCH_ITEM_ID) {
+            // Search is an action, not a place: open it and hand the highlight back to where we were.
+            SearchPresenter.instance(this).startSearch(null);
+            mBottomNav.post(() -> {
+                mSuppressNavCallback = true;
+                reassertNavHighlight(mBottomNav.getMenu(), true);
+                if (mBottomNav.getSelectedItemId() == SEARCH_ITEM_ID) {
+                    mBottomNav.setSelectedItemId(YOU_ITEM_ID); // a You sub-screen has no tab of its own
+                }
+                mSuppressNavCallback = false;
+            });
+            return;
+        }
+        int idx = navIndexOf(itemId);
+        mTransitionDir = idx >= mTabIndex ? 1 : -1;
+        mTabIndex = idx;
         if (itemId == YOU_ITEM_ID) {
             showYouPanel();
         } else {
@@ -1002,12 +1236,15 @@ public class MobileBrowseActivity extends MobileActivity
         updateAccountRow();
         mContentSwipe.setRefreshing(false);
         mYouPanel.setVisibility(View.VISIBLE);
+        setGlassSource(mYouPanel);
+        animateEnter(mYouPanel);
         onYouPanelToggled();
     }
 
     private void hideYouPanel() {
         mYouShowing = false;
         mYouPanel.setVisibility(View.GONE);
+        setGlassSource(mContentSwipe);
         onYouPanelToggled();
     }
 
@@ -1272,6 +1509,9 @@ public class MobileBrowseActivity extends MobileActivity
         }
 
         boolean switched = mCurrentSectionId != sectionId;
+        if (switched) {
+            animateEnter(mContentSwipe);
+        }
         mCurrentSectionId = sectionId;
         paintCachedSnapshot(sectionId, switched);
         syncNavHighlight(sectionId);
@@ -1696,7 +1936,7 @@ public class MobileBrowseActivity extends MobileActivity
         }
         String newSignature = signature.toString();
 
-        if (newSignature.equals(mNavSignature) && menu.size() == navSections.size() + 1) {
+        if (newSignature.equals(mNavSignature) && menu.size() == navSections.size() + 2) {
             // Same tabs as on screen: only re-assert the highlight (the section may have moved).
             mSuppressNavCallback = true;
             reassertNavHighlight(menu, false);
@@ -1720,8 +1960,11 @@ public class MobileBrowseActivity extends MobileActivity
             }
         }
 
+        menu.add(Menu.NONE, SEARCH_ITEM_ID, navSections.size(), R.string.mobile_search_button)
+                .setIcon(R.drawable.ic_mobile_search);
+
         // The synthetic You tab always sits last (account + extra sections + settings).
-        menu.add(Menu.NONE, YOU_ITEM_ID, navSections.size(), R.string.mobile_nav_you)
+        menu.add(Menu.NONE, YOU_ITEM_ID, navSections.size() + 1, R.string.mobile_nav_you)
                 .setIcon(R.drawable.ic_nav_you);
 
         // Re-assert the highlight after clear()/add() wiped it, so the current tab stays lit.
